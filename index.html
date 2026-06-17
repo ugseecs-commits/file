@@ -274,6 +274,7 @@
       <canvas id="viz"></canvas>
       <div class="status"><span class="led idle" id="recLed"></span><span id="recStatus">Microphone is off.</span></div>
       <div class="status" style="margin-top:4px;"><span class="led idle" id="meterLed"></span><span id="meterText" style="font-family:var(--mono); font-size:11.5px;">signal: — / threshold: —</span></div>
+      <div class="status" style="margin-top:4px;"><span style="color:var(--dim); font-size:11px;">tones seen:</span><span id="symbolTrace" style="font-family:var(--mono); font-size:11px; color:var(--teal);">—</span></div>
     </div>
 
     <div class="panel">
@@ -550,6 +551,7 @@ const vizCanvas = document.getElementById('viz');
 const vizCtx2d = vizCanvas.getContext('2d');
 const meterLed = document.getElementById('meterLed');
 const meterText = document.getElementById('meterText');
+const symbolTrace = document.getElementById('symbolTrace');
 
 let listening = false;
 let audioCtx = null;
@@ -563,6 +565,7 @@ let symbolBuffer = [];
 let lastSymbolTime = 0;
 let stableSymbol = null;
 let symbolArmed = true;
+let lastSymbolsSeen = []; // rolling log of decoded tone indices, for live diagnostics
 let stableCount = 0;
 const STABLE_NEEDED = 3; // consecutive analysis frames agreeing on a symbol before we "commit" it
 const SILENCE_GAP_MS = 40; // if energy drops below threshold this long, ready for next symbol
@@ -622,7 +625,21 @@ function resetDecoder(){
   receivedChecksumNibbles = [];
 }
 
+function symbolLabel(idx){
+  if(idx === CTRL_SYNC) return 'SYNC';
+  if(idx === CTRL_START) return 'START';
+  if(idx === CTRL_END) return 'END';
+  return idx.toString(16).toUpperCase();
+}
+function updateRawSymbolReadout(){
+  symbolTrace.textContent = lastSymbolsSeen.map(symbolLabel).join(' ') || '—';
+}
+
 function handleSymbol(idx){
+  lastSymbolsSeen.push(idx);
+  if(lastSymbolsSeen.length > 12) lastSymbolsSeen.shift();
+  updateRawSymbolReadout();
+
   if(idx === CTRL_SYNC){
     if(decodeState === 'IDLE'){
       decodeState = 'SYNCING';
@@ -631,7 +648,10 @@ function handleSymbol(idx){
     return;
   }
   if(idx === CTRL_START){
+    // Accept START from IDLE or SYNCING -- don't require having seen every
+    // sync pulse cleanly first. Sync tones are a hint, not a hard prerequisite.
     decodeState = 'PAYLOAD';
+    symbolBuffer = [];
     collectedBytes = [];
     nibbleHigh = null;
     receivedChecksumNibbles = [];
@@ -642,7 +662,14 @@ function handleSymbol(idx){
     finalizeMessage();
     return;
   }
-  if(decodeState !== 'PAYLOAD') return;
+  if(decodeState !== 'PAYLOAD'){
+    // We got a data nibble before ever seeing START -- almost always means
+    // the START tone itself was missed. Self-heal: treat this as an
+    // implicit start so the rest of the message isn't silently dropped.
+    decodeState = 'PAYLOAD';
+    symbolBuffer = [];
+    recStatus.textContent = 'Receiving message… (missed start marker, recovering)';
+  }
 
   // We don't know in advance how many payload nibbles vs checksum nibbles
   // there are, since END marks the true end. Strategy: keep nibbles in a
@@ -763,6 +790,8 @@ function drawVizCombined(mags, combined){
 async function startListening(){
   resizeCanvas();
   resetDecoder();
+  lastSymbolsSeen = [];
+  updateRawSymbolReadout();
   micStream = await navigator.mediaDevices.getUserMedia({
     audio:{
       echoCancellation:false,
