@@ -258,16 +258,8 @@
       <div id="dec-camera-area" class="hidden">
         <div class="relative w-full aspect-video rounded-md border border-gray-700 bg-black overflow-hidden flex items-center justify-center">
           <video id="webcam-video" class="w-full h-full object-cover" autoplay playsinline muted></video>
-          <!-- Guide Box Overlay -->
-          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div class="border-4 border-dashed border-emerald-500 w-4/5 h-4/5 rounded relative flex items-center justify-center">
-              <span class="absolute top-2 left-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">TL</span>
-              <span class="absolute top-2 right-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">TR</span>
-              <span class="absolute bottom-2 left-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">BL</span>
-              <span class="absolute bottom-2 right-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">BR</span>
-              <div class="text-[10px] text-emerald-400 font-semibold bg-black/60 px-2 py-1 rounded select-none">ALIGN SNOWCRASH VIDEO HERE</div>
-            </div>
-          </div>
+          <!-- Canvas Overlay for Tracking and Alignment Guides -->
+          <canvas id="webcam-overlay-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
           <div class="absolute bottom-2 left-2 bg-black/80 px-2 py-1 rounded text-xs text-white mono" id="cam-status">
             Camera standby.
           </div>
@@ -310,7 +302,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mono text-xs text-slate-400 leading-relaxed">
       <div><span class="text-blue-400 font-medium">CIPHER</span><br>AES-256-GCM<br>12B IV · 16B Salt<br>PBKDF2 100k iters</div>
       <div><span class="text-blue-400 font-medium">COMPRESSION</span><br>fflate zipSync<br>DEFLATE algorithm<br>Zero server contact</div>
-      <div><span class="text-blue-400 font-medium">VIDEO MATRIX</span><br>1080p · 4x4 blocks<br>8-color YCbCr decode<br>YouTube-proof CBR</div>
+      <div><span class="text-blue-400 font-medium">VIDEO MATRIX</span><br>1080p · 16x16 blocks<br>8-color Calibrated<br>YouTube-proof CBR</div>
       <div><span class="text-blue-400 font-medium">HEADER</span><br>[4B len] [16B salt]<br>[12B IV] [4B fn_len]<br>[filename] [payload]</div>
     </div>
   </div>
@@ -628,28 +620,34 @@ async function decryptPayload(payload, password) {
 
 const CANVAS_W    = 1920;
 const CANVAS_H    = 1080;
-// 4×4 px blocks — H.264/VP9 DCT-unit aligned.
-// By reading only the "dead center" (inner 2×2 pixels) during decode,
-// we survive 4:2:0 chroma subsampling and block-edge quantization blur.
+// 16×16 px blocks — aligned with H.264 macroblocks for optimal compression and robustness.
 const BLOCK_SIZE  = 16;
 const COLS        = 120;  // 1920 / 16 = 120 blocks/row
 const ROWS        = 67;   // 1072 / 16 = 67 blocks/col (centered with 4px padding top/bottom)
 const ENCODE_FPS  = 30;   // standard YouTube framerate
 const FRAME_REPEATS = 15; // repeat each data frame for 15 frames (0.5s) to assist camera scanning
 
-// BINARY encoding: 1 bit per block → 2 distinct colors (Black/White).
-// Maximum contrast (0 vs 255) and no chroma channels makes it immune
-// to chroma subsampling and highly compressible.
-// COLS×ROWS×1 = 120×67×1 = 8,040 bits = 1,005 bytes/frame ✓
-const BITS_PER_BLOCK   = 1;
+// 8-COLOR encoding: 3 bits per block → 8 distinct colors.
+// Aligned to 16x16 macroblocks, chroma subsampling bleeding does not affect block centers.
+// COLS×ROWS = 8,040 blocks.
+// Corners = 196 blocks. Index = 16 blocks. Calibration = 8 blocks.
+// Payload blocks = 8,040 - 196 - 16 - 8 = 7,820 blocks.
+// 7,820 blocks * 3 bits/block = 23,460 bits = 2,932 bytes per frame.
+const BITS_PER_BLOCK   = 3;
 const BLOCKS_PER_FRAME = COLS * ROWS;                       
 const BITS_PER_FRAME   = BLOCKS_PER_FRAME * BITS_PER_BLOCK; 
-const BYTES_PER_FRAME  = BITS_PER_FRAME / 8;                
+const BYTES_PER_FRAME  = 2932; // Exactly 23,456 bits of payload per frame
 
-// Binary palette — maximum pairwise separation (0 vs 255).
+// 8-color palette — maximum pairwise separation.
 const PALETTE = [
   [  0,   0,   0],  // 0 black
-  [255, 255, 255],  // 1 white
+  [  0,   0, 255],  // 1 blue
+  [255,   0,   0],  // 2 red
+  [  0, 128, 128],  // 3 dark cyan
+  [255, 128,   0],  // 4 orange
+  [  0, 255, 255],  // 5 cyan
+  [255, 255,   0],  // 6 yellow
+  [255, 255, 255],  // 7 white
 ];
 
 /** Convert linear RGB [0–255] to BT.601 YCbCr [0–255] */
@@ -714,6 +712,17 @@ function isMetadataBlock(col, row) {
 }
 
 /**
+ * Determines if a block position is reserved for the 8 color calibration blocks.
+ * Returns the palette index (0..7) if true, otherwise -1.
+ */
+function isCalibrationBlock(col, row) {
+  if (row === 0 && col >= 23 && col <= 30) {
+    return col - 23;
+  }
+  return -1;
+}
+
+/**
  * renderFrameToCanvas()
  * ─────────────────────
  * Paints one 1920×1080 SnowCrash frame onto the canvas.
@@ -735,17 +744,30 @@ function renderFrameToCanvas(ctx, bytes, byteOffset, frameIndex) {
 
       const cornerIdx = isCornerMarker(col, row);
       if (cornerIdx !== -1) {
-        idx = cornerIdx;
+        // Corner patterns: 0 for Black, 1 for White (color index 7 in our 8-color palette)
+        idx = cornerIdx === 1 ? 7 : 0;
       } else {
         const metaBitIdx = isMetadataBlock(col, row);
         if (metaBitIdx !== -1) {
-          idx = (frameIndex >> metaBitIdx) & 1;
+          // Metadata is written using 1 bit per block: 0 is Black (0), 1 is White (7)
+          const bit = (frameIndex >> metaBitIdx) & 1;
+          idx = bit === 1 ? 7 : 0;
         } else {
-          if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
-            idx = readBit(bytes, absBit);
-            absBit += 1;
+          const calIdx = isCalibrationBlock(col, row);
+          if (calIdx !== -1) {
+            // Draw the exact calibration color
+            idx = calIdx;
           } else {
-            idx = 0;
+            // Payload blocks: read 3 bits
+            if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
+              const b0 = readBit(bytes, absBit);
+              const b1 = readBit(bytes, absBit + 1);
+              const b2 = readBit(bytes, absBit + 2);
+              idx = b0 | (b1 << 1) | (b2 << 2);
+              absBit += 3;
+            } else {
+              idx = 0;
+            }
           }
         }
       }
@@ -776,6 +798,29 @@ function readBitsFromCanvas(ctx, outBytes, byteOffset) {
   const imgData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
   const buf     = imgData.data;
 
+  // 1. Sample the 8 calibration blocks from Row 0 to construct a calibrated YUV palette
+  const calibratedPaletteYUV = [];
+  const py0 = 0 * BLOCK_SIZE + 4;
+  for (let k = 0; k < 8; k++) {
+    const px = (23 + k) * BLOCK_SIZE;
+    let sumR = 0, sumG = 0, sumB = 0;
+    for (let sy = 6; sy < 10; sy++) {
+      for (let sx = 6; sx < 10; sx++) {
+        const idx = ((py0 + sy) * CANVAS_W + (px + sx)) * 4;
+        sumR += buf[idx];
+        sumG += buf[idx + 1];
+        sumB += buf[idx + 2];
+      }
+    }
+    const [y, cb, cr] = rgbToYCbCr(sumR / 16, sumG / 16, sumB / 16);
+    calibratedPaletteYUV.push([y, cb, cr]);
+  }
+
+  // Define dynamic mid-Y threshold for B&W metadata blocks
+  const blackY = calibratedPaletteYUV[0][0];
+  const whiteY = calibratedPaletteYUV[7][0];
+  const midY   = (blackY + whiteY) / 2;
+
   let absBit = byteOffset * 8;
   let decodedFrameIndex = 0;
   let cornerMatches = 0;
@@ -801,22 +846,45 @@ function readBitsFromCanvas(ctx, outBytes, byteOffset) {
       const avgG = sumG / 16;
       const avgB = sumB / 16;
 
-      const y = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
-      const bitVal = y > 127 ? 1 : 0;
+      const [y, cb, cr] = rgbToYCbCr(avgR, avgG, avgB);
 
       const cornerIdx = isCornerMarker(col, row);
       if (cornerIdx !== -1) {
+        // Corners are Black (0) or White (1)
+        const bitVal = y > midY ? 1 : 0;
         if (bitVal === cornerIdx) {
           cornerMatches++;
         }
       } else {
         const metaBitIdx = isMetadataBlock(col, row);
         if (metaBitIdx !== -1) {
+          // Metadata is Black (0) or White (1)
+          const bitVal = y > midY ? 1 : 0;
           decodedFrameIndex |= (bitVal << metaBitIdx);
         } else {
-          if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
-            setBit(outBytes, absBit, bitVal);
-            absBit += 1;
+          const calIdx = isCalibrationBlock(col, row);
+          if (calIdx !== -1) {
+            // Skip calibration blocks
+          } else {
+            // Payload blocks: decode 3 bits using the calibrated palette
+            let bestIdx = 0, bestDist = Infinity;
+            for (let pi = 0; pi < 8; pi++) {
+              const [py2, pcb, pcr] = calibratedPaletteYUV[pi];
+              const dy2 = y - py2;
+              const dcb = cb - pcb;
+              const dcr = cr - pcr;
+              const d = dy2 * dy2 + 0.5 * dcb * dcb + 0.5 * dcr * dcr;
+              if (d < bestDist) {
+                bestDist = d;
+                bestIdx = pi;
+              }
+            }
+            if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
+              setBit(outBytes, absBit,     bestIdx & 1);
+              setBit(outBytes, absBit + 1, (bestIdx >> 1) & 1);
+              setBit(outBytes, absBit + 2, (bestIdx >> 2) & 1);
+              absBit += 3;
+            }
           }
         }
       }
@@ -1276,6 +1344,14 @@ function stopWebcam() {
     btn.textContent = 'Start Camera';
     btn.className = 'btn-primary';
   }
+  
+  // Clear overlay canvas
+  const overlay = document.getElementById('webcam-overlay-canvas');
+  if (overlay) {
+    const oCtx = overlay.getContext('2d');
+    oCtx.clearRect(0, 0, overlay.width, overlay.height);
+  }
+  
   setStatus('cam-status', 'Camera stopped.');
   if (webcamTimer) {
     cancelAnimationFrame(webcamTimer);
@@ -1291,6 +1367,178 @@ function toggleCamera() {
   }
 }
 
+/**
+ * findCornerCenter()
+ * ──────────────────
+ * Searches a 60x60 pixel region in the camera feed around an approximate coordinate.
+ * Applies a 15x15 box blur to find the centroid (minimum luminance) of the corner marker's black core.
+ */
+function findCornerCenter(ctx, approxX, approxY) {
+  const size = 60;
+  const half = size / 2;
+  let imgData;
+  try {
+    imgData = ctx.getImageData(approxX - half, approxY - half, size, size);
+  } catch (e) {
+    return { x: approxX, y: approxY };
+  }
+  const buf = imgData.data;
+  
+  // Compute luminance for each pixel in the 60x60 patch
+  const lum = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      lum[y * size + x] = 0.299 * buf[idx] + 0.587 * buf[idx+1] + 0.114 * buf[idx+2];
+    }
+  }
+  
+  // Find coordinate with minimum local 15x15 average (smoothes out camera noise and moire)
+  const kSize = 15;
+  const kHalf = Math.floor(kSize / 2);
+  let minVal = Infinity;
+  let bestX = approxX;
+  let bestY = approxY;
+  
+  for (let y = kHalf; y < size - kHalf; y++) {
+    for (let x = kHalf; x < size - kHalf; x++) {
+      let sum = 0;
+      for (let ky = -kHalf; ky <= kHalf; ky++) {
+        for (let kx = -kHalf; kx <= kHalf; kx++) {
+          sum += lum[(y + ky) * size + (x + kx)];
+        }
+      }
+      if (sum < minVal) {
+        minVal = sum;
+        bestX = approxX - half + x;
+        bestY = approxY - half + y;
+      }
+    }
+  }
+  return { x: bestX, y: bestY };
+}
+
+/**
+ * readBitsFromWarpedCanvas()
+ * ──────────────────────────
+ * Uses bilinear interpolation to map a 120x67 grid onto the refined TL, TR, BL, BR corners.
+ * Samples the dynamic color calibration bar at Row 0, cols 23..30 to build the live palette,
+ * and decodes 3 bits per block against this calibrated palette.
+ */
+function readBitsFromWarpedCanvas(ctx, outBytes, TL, TR, BL, BR) {
+  let imgData;
+  try {
+    imgData = ctx.getImageData(0, 0, 1280, 720);
+  } catch (e) {
+    return { frameIndex: 0, matchPct: 0 };
+  }
+  const buf = imgData.data;
+
+  // Helper to sample RGB average in a 3x3 window around a float coordinate (x, y)
+  function samplePixel(cx, cy) {
+    let sumR = 0, sumG = 0, sumB = 0, count = 0;
+    const icx = Math.round(cx);
+    const icy = Math.round(cy);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const px = icx + dx;
+        const py = icy + dy;
+        if (px >= 0 && px < 1280 && py >= 0 && py < 720) {
+          const idx = (py * 1280 + px) * 4;
+          sumR += buf[idx];
+          sumG += buf[idx + 1];
+          sumB += buf[idx + 2];
+          count++;
+        }
+      }
+    }
+    return count > 0 ? [sumR / count, sumG / count, sumB / count] : [0, 0, 0];
+  }
+
+  // Bilinear interpolation mapping normalized u, v to camera x, y
+  function getWarpedPoint(u, v) {
+    const x = (1 - u) * (1 - v) * TL.x + u * (1 - v) * TR.x + (1 - u) * v * BL.x + u * v * BR.x;
+    const y = (1 - u) * (1 - v) * TL.y + u * (1 - v) * TR.y + (1 - u) * v * BL.y + u * v * BR.y;
+    return { x, y };
+  }
+
+  // 1. Sample the 8 calibration blocks from Row 0 to construct the calibrated YUV palette
+  const calibratedPaletteYUV = [];
+  for (let k = 0; k < 8; k++) {
+    const u = (23 + k + 0.5) / COLS;
+    const v = 0.5 / ROWS;
+    const pt = getWarpedPoint(u, v);
+    const [r, g, b] = samplePixel(pt.x, pt.y);
+    const [y, cb, cr] = rgbToYCbCr(r, g, b);
+    calibratedPaletteYUV.push([y, cb, cr]);
+  }
+
+  // Dynamic threshold for B&W blocks (corners & metadata)
+  const blackY = calibratedPaletteYUV[0][0];
+  const whiteY = calibratedPaletteYUV[7][0];
+  const midY   = (blackY + whiteY) / 2;
+
+  let absBit = 0;
+  let decodedFrameIndex = 0;
+  let cornerMatches = 0;
+  const totalCornerBlocks = 196;
+
+  // 2. Decode all blocks
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const u = (col + 0.5) / COLS;
+      const v = (row + 0.5) / ROWS;
+      const pt = getWarpedPoint(u, v);
+      const [r, g, b] = samplePixel(pt.x, pt.y);
+      const [y, cb, cr] = rgbToYCbCr(r, g, b);
+
+      const cornerIdx = isCornerMarker(col, row);
+      if (cornerIdx !== -1) {
+        const bitVal = y > midY ? 1 : 0;
+        if (bitVal === cornerIdx) {
+          cornerMatches++;
+        }
+      } else {
+        const metaBitIdx = isMetadataBlock(col, row);
+        if (metaBitIdx !== -1) {
+          const bitVal = y > midY ? 1 : 0;
+          decodedFrameIndex |= (bitVal << metaBitIdx);
+        } else {
+          const calIdx = isCalibrationBlock(col, row);
+          if (calIdx !== -1) {
+            // Skip calibration blocks
+          } else {
+            // Payload blocks: decode 3 bits using the calibrated palette
+            let bestIdx = 0, bestDist = Infinity;
+            for (let pi = 0; pi < 8; pi++) {
+              const [py2, pcb, pcr] = calibratedPaletteYUV[pi];
+              const dy2 = y - py2;
+              const dcb = cb - pcb;
+              const dcr = cr - pcr;
+              const d = dy2 * dy2 + 0.5 * dcb * dcb + 0.5 * dcr * dcr;
+              if (d < bestDist) {
+                bestDist = d;
+                bestIdx = pi;
+              }
+            }
+            if (absBit < BYTES_PER_FRAME * 8) {
+              setBit(outBytes, absBit,     bestIdx & 1);
+              setBit(outBytes, absBit + 1, (bestIdx >> 1) & 1);
+              setBit(outBytes, absBit + 2, (bestIdx >> 2) & 1);
+              absBit += 3;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    frameIndex: decodedFrameIndex,
+    matchPct: cornerMatches / totalCornerBlocks
+  };
+}
+
 async function processWebcamFrame() {
   if (!webcamActive) return;
 
@@ -1300,36 +1548,77 @@ async function processWebcamFrame() {
     // Draw current frame to scratch canvas
     camScratchCtx.drawImage(video, 0, 0, camScratchCanvas.width, camScratchCanvas.height);
     
-    // Crop the guide box area (centered, 80% size)
-    const cropX = 128;
-    const cropY = 72;
-    const cropW = 1024;
-    const cropH = 576;
-    
-    // Read bits from the cropped guide region
+    // Refine corners around approximate guide markers (128, 72) etc.
+    const TL_refined = findCornerCenter(camScratchCtx, 128, 72);
+    const TR_refined = findCornerCenter(camScratchCtx, 1152, 72);
+    const BL_refined = findCornerCenter(camScratchCtx, 128, 648);
+    const BR_refined = findCornerCenter(camScratchCtx, 1152, 648);
+
+    // Read bits from the warped grid
     const tempArray = new Uint8Array(BYTES_PER_FRAME);
-    const res = readBitsFromCroppedCanvas(camScratchCtx, tempArray, cropX, cropY, cropW, cropH);
+    const res = readBitsFromWarpedCanvas(camScratchCtx, tempArray, TL_refined, TR_refined, BL_refined, BR_refined);
     
     const camStatusEl = document.getElementById('cam-status');
+    const matchesSignal = res.matchPct > 0.80;
+
+    // Draw visual indicators on overlay canvas
+    const overlay = document.getElementById('webcam-overlay-canvas');
+    if (overlay) {
+      overlay.width = 1280;
+      overlay.height = 720;
+      const oCtx = overlay.getContext('2d');
+      oCtx.clearRect(0, 0, 1280, 720);
+      
+      // Draw dynamic guide box
+      oCtx.strokeStyle = matchesSignal ? '#10b981' : '#f59e0b';
+      oCtx.lineWidth = 4;
+      oCtx.setLineDash([15, 10]);
+      oCtx.strokeRect(128, 72, 1024, 576);
+      
+      // Draw calibration/tracking text
+      oCtx.fillStyle = '#ffffff';
+      oCtx.font = 'bold 14px JetBrains Mono, monospace';
+      oCtx.fillText('ALIGN VIDEO GRID WITH GUIDES', 480, 45);
+      
+      // Draw refined target crosshairs
+      oCtx.setLineDash([]);
+      [TL_refined, TR_refined, BL_refined, BR_refined].forEach((pt, i) => {
+        const labels = ['TL', 'TR', 'BL', 'BR'];
+        oCtx.fillStyle = matchesSignal ? '#10b981' : '#f59e0b';
+        
+        // Target dot
+        oCtx.beginPath();
+        oCtx.arc(pt.x, pt.y, 6, 0, 2 * Math.PI);
+        oCtx.fill();
+        
+        // Label
+        oCtx.fillStyle = '#ffffff';
+        oCtx.fillText(labels[i], pt.x + 10, pt.y - 10);
+        
+        // Crosshair lines
+        oCtx.strokeStyle = matchesSignal ? '#10b981' : '#f59e0b';
+        oCtx.lineWidth = 2;
+        oCtx.beginPath();
+        oCtx.moveTo(pt.x - 20, pt.y); oCtx.lineTo(pt.x + 20, pt.y);
+        oCtx.moveTo(pt.x, pt.y - 20); oCtx.lineTo(pt.x, pt.y + 20);
+        oCtx.stroke();
+      });
+    }
     
-    // If corners match >80%, we consider the signal locked
-    if (res.matchPct > 0.80) {
-      camStatusEl.textContent = `💚 Signal Locked (${(res.matchPct*100).toFixed(0)}%) · Current Chunk: ${res.frameIndex}`;
+    if (matchesSignal) {
+      camStatusEl.textContent = `💚 Signal Locked (${(res.matchPct*100).toFixed(0)}%) · Chunk: ${res.frameIndex}`;
       camStatusEl.className = "absolute bottom-2 left-2 bg-emerald-950/90 border border-emerald-500 px-2 py-1 rounded text-xs text-emerald-300 font-semibold mono";
       
       const idx = res.frameIndex;
       
-      // Safety check on index bounds
       if (idx >= 0 && idx < 10000) {
         if (!webcamPayloadBuffer) {
-          // If we don't have the final buffer yet, store this chunk in pending chunks
           if (!pendingWebcamChunks.has(idx)) {
             pendingWebcamChunks.set(idx, tempArray);
             console.log(`Webcam: Buffered chunk ${idx}`);
           }
           
           if (idx === 0) {
-            // Read total length from chunk 0 header
             const view = new DataView(tempArray.buffer);
             const totalPayloadLen = view.getUint32(0, true);
             if (totalPayloadLen > 0 && totalPayloadLen < 500_000_000) {
@@ -1337,7 +1626,6 @@ async function processWebcamFrame() {
               webcamPayloadBuffer = new Uint8Array(totalPayloadLen);
               receivedChunks.clear();
               
-              // Flush pending chunks into the new buffer
               for (const [pIdx, pData] of pendingWebcamChunks) {
                 if (pIdx * BYTES_PER_FRAME < totalPayloadLen) {
                   webcamPayloadBuffer.set(pData, pIdx * BYTES_PER_FRAME);
@@ -1345,20 +1633,19 @@ async function processWebcamFrame() {
                 }
               }
               pendingWebcamChunks.clear();
-              playBeep(440, 0.1); // Tone indicating header captured
+              playBeep(440, 0.1); // Header locked beep
               setStatus('dec-status', `📡 Signal acquired. Capturing ${totalWebcamChunks} chunks…`, 'success');
             }
           }
         } else {
-          // Main buffer is active
+          // Main buffer active
           if (!receivedChunks.has(idx)) {
             const totalPayloadLen = webcamPayloadBuffer.length;
             if (idx * BYTES_PER_FRAME < totalPayloadLen) {
               webcamPayloadBuffer.set(tempArray, idx * BYTES_PER_FRAME);
               receivedChunks.add(idx);
               
-              // Play audio feedback tick
-              playBeep(880, 0.05);
+              playBeep(880, 0.05); // Tick beep
               
               const pct = (receivedChunks.size / totalWebcamChunks * 100).toFixed(1);
               setProgress('dec-progress', pct);
@@ -1380,76 +1667,11 @@ async function processWebcamFrame() {
     }
   }
 
-  // Throttle loop to ~10 frames per second to save CPU
   setTimeout(() => {
     if (webcamActive) {
       webcamTimer = requestAnimationFrame(processWebcamFrame);
     }
   }, 100);
-}
-
-function readBitsFromCroppedCanvas(ctx, outBytes, Left, Top, Width, Height) {
-  const imgData = ctx.getImageData(Left, Top, Width, Height);
-  const buf     = imgData.data;
-
-  const block_w = Width / COLS;
-  const block_h = Height / ROWS;
-
-  let absBit = 0;
-  let decodedFrameIndex = 0;
-  let cornerMatches = 0;
-  const totalCornerBlocks = 196;
-
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const cx = Math.floor((col + 0.5) * block_w);
-      const cy = Math.floor((row + 0.5) * block_h);
-
-      let sumR = 0, sumG = 0, sumB = 0, count = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const px = cx + dx;
-          const py = cy + dy;
-          if (px >= 0 && px < Width && py >= 0 && py < Height) {
-            const idx = (py * Width + px) * 4;
-            sumR += buf[idx];
-            sumG += buf[idx + 1];
-            sumB += buf[idx + 2];
-            count++;
-          }
-        }
-      }
-
-      const avgR = sumR / count;
-      const avgG = sumG / count;
-      const avgB = sumB / count;
-
-      const y = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
-      const bitVal = y > 120 ? 1 : 0; // Slightly lower threshold than 127 to assist camera scanning
-
-      const cornerIdx = isCornerMarker(col, row);
-      if (cornerIdx !== -1) {
-        if (bitVal === cornerIdx) {
-          cornerMatches++;
-        }
-      } else {
-        const metaBitIdx = isMetadataBlock(col, row);
-        if (metaBitIdx !== -1) {
-          decodedFrameIndex |= (bitVal << metaBitIdx);
-        } else {
-          if (absBit < BYTES_PER_FRAME * 8) {
-            setBit(outBytes, absBit, bitVal);
-            absBit += 1;
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    frameIndex: decodedFrameIndex,
-    matchPct: cornerMatches / totalCornerBlocks
-  };
 }
 
 async function decryptAndSaveWebcamPayload() {
