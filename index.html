@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnowCrash Drive — Encrypted Visual Payload</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.0.0/build/mp4-muxer.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg-dark: #0d1117;
+    --accent-blue: #58a6ff;
+    --accent-green: #238636;
+    --accent-green-hover: #2ea043;
+    --accent-red: #da3633;
+    --text-main: #c9d1d9;
+    --text-muted: #8b949e;
+    --panel-bg: #161b22;
+    --border-color: #30363d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  .mono { font-family: 'JetBrains Mono', SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; }
+
+  .glass-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background-color: var(--accent-green);
+    color: #ffffff;
+    font-weight: 500;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid rgba(240, 246, 252, 0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-green-hover);
+  }
+
+  .btn-primary:disabled {
+    background-color: #23863680;
+    color: rgba(255, 255, 255, 0.5);
+    border-color: transparent;
+    cursor: not-allowed;
+  }
+
+  .btn-danger {
+    background-color: var(--panel-bg);
+    color: var(--accent-red);
+    border: 1px solid var(--border-color);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background-color: var(--accent-red);
+    color: #ffffff;
+    border-color: var(--accent-red);
+  }
+
+  .input-field {
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.875rem;
+  }
+
+  .input-field:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-dark);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent-blue);
+    background: #0d1117;
+  }
+
+  .progress-bar-wrap {
+    background: var(--border-color);
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background-color: var(--accent-green);
+    width: 0%;
+    transition: width 0.15s ease-out;
+  }
+
+  .status-line {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-height: 1.2rem;
+  }
+  .status-line.alert { color: var(--accent-red); }
+  .status-line.success { color: var(--accent-green); }
+
+  .tab-btn {
+    font-weight: 500;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-main);
+    border-radius: 6px;
+    transition: background-color 0.2s;
+  }
+  .tab-btn:hover { background-color: var(--border-color); }
+  .tab-btn.active {
+    background-color: var(--border-color);
+    border-color: var(--border-color);
+  }
+
+  .section-head {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .section-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: var(--border-color);
+  }
+
+  .hidden { display: none !important; }
+  .fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+  .matrix-canvas {
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+  }
+</style>
+</head>
+<body>
+
+<header class="text-center pt-10 pb-6 border-b" style="border-color: var(--border-color);">
+  <h1 class="text-3xl font-semibold mb-2 tracking-tight text-white">SnowCrash Drive</h1>
+  <p class="text-sm font-normal text-slate-400">Encrypted Visual Payload System</p>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 pb-12">
+  <!-- Tabs -->
+  <div class="flex justify-center gap-2 mb-8">
+    <button class="tab-btn active" id="tab-encode" onclick="switchTab('encode')">Encode</button>
+    <button class="tab-btn" id="tab-decode" onclick="switchTab('decode')">Decode</button>
+  </div>
+
+  <!-- ENCODE PANEL -->
+  <div id="panel-encode" class="fade-in">
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 1 — Payload</div>
+      <div class="drop-zone p-10 text-center" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" class="hidden" onchange="onFileSelect(event)">
+        <div class="text-4xl mb-3 opacity-80">📁</div>
+        <div class="text-sm text-slate-400 font-medium">Drag and drop your file here, or click to browse</div>
+        <div id="file-label" class="mt-3 text-xs font-semibold text-cyan-400 mono tracking-wider">NO FILE SELECTED</div>
+      </div>
+    </div>
+
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 2 — Encryption Key</div>
+      <div class="flex gap-3">
+        <input type="password" class="input-field" id="enc-password" placeholder="AES-256-GCM Passphrase...">
+        <button class="btn-primary flex-none" onclick="togglePasswordVisibility('enc-password', this)" style="padding:0.75rem 1rem;">👁</button>
+      </div>
+      <div class="mt-2 text-xs text-slate-500" id="enc-strength">PBKDF2 SHA-256 key derivation</div>
+    </div>
+
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 3 — Render</div>
+      <div class="flex flex-wrap gap-3 items-center">
+        <button class="btn-primary" id="btn-encode" onclick="startEncoding()" disabled>Generate Video</button>
+        <button class="btn-primary btn-danger hidden" id="btn-cancel-enc" onclick="cancelEncoding()">Cancel</button>
+      </div>
+      <div class="mt-5">
+        <div class="progress-bar-wrap mb-2"><div class="progress-bar" id="enc-progress"></div></div>
+        <div class="status-line mono" id="enc-status">Ready.</div>
+      </div>
+
+      <div class="mt-6 hidden fade-in" id="canvas-container">
+        <div class="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wider">Live Preview</div>
+        <canvas id="snowcrash-canvas" width="1920" height="1080" class="matrix-canvas w-full max-h-48 object-cover"></canvas>
+      </div>
+
+      <div class="mt-3 hidden status-line mono text-cyan-400" id="rec-indicator">
+        <span class="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2"></span> Encoding frames...
+      </div>
+
+      <div class="mt-6 hidden fade-in" id="enc-download-area">
+        <a id="enc-download-link" class="btn-primary inline-block text-center no-underline">Download Video</a>
+        <div class="status-line mt-2 success mono" id="enc-done-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DECODE PANEL -->
+  <div id="panel-decode" class="hidden fade-in">
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 1 — Source Video</div>
+      
+      <!-- Decode Mode Tabs -->
+      <div class="flex gap-2 mb-4">
+        <button type="button" class="tab-btn active" id="btn-dec-mode-file" onclick="switchDecodeMode('file')">📂 Video File</button>
+        <button type="button" class="tab-btn" id="btn-dec-mode-camera" onclick="switchDecodeMode('camera')">📷 Webcam Scanner</button>
+      </div>
+
+      <div id="dec-file-area">
+        <div class="drop-zone p-10 text-center" id="dec-drop-zone" onclick="document.getElementById('video-input').click()">
+          <input type="file" id="video-input" accept="video/*" class="hidden" onchange="onVideoSelect(event)">
+          <div class="text-4xl mb-3 opacity-80">🎞</div>
+          <div class="text-sm text-slate-400 font-medium">Drop SnowCrash MP4 here, or click to browse</div>
+          <div id="video-label" class="mt-3 text-xs font-semibold text-cyan-400 mono tracking-wider">NO VIDEO SELECTED</div>
+        </div>
+      </div>
+
+      <div id="dec-camera-area" class="hidden">
+        <div class="relative w-full aspect-video rounded-md border border-gray-700 bg-black overflow-hidden flex items-center justify-center">
+          <video id="webcam-video" class="w-full h-full object-cover" autoplay playsinline muted></video>
+          <!-- Guide Box Overlay -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="border-4 border-dashed border-emerald-500 w-4/5 h-4/5 rounded relative flex items-center justify-center">
+              <span class="absolute top-2 left-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">TL</span>
+              <span class="absolute top-2 right-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">TR</span>
+              <span class="absolute bottom-2 left-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">BL</span>
+              <span class="absolute bottom-2 right-2 text-emerald-400 text-xs font-semibold bg-black/60 px-1 rounded">BR</span>
+              <div class="text-[10px] text-emerald-400 font-semibold bg-black/60 px-2 py-1 rounded select-none">ALIGN SNOWCRASH VIDEO HERE</div>
+            </div>
+          </div>
+          <div class="absolute bottom-2 left-2 bg-black/80 px-2 py-1 rounded text-xs text-white mono" id="cam-status">
+            Camera standby.
+          </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+          <button type="button" class="btn-primary" id="btn-toggle-cam" onclick="toggleCamera()">Start Camera</button>
+        </div>
+      </div>
+
+      <video id="dec-video" class="hidden" muted playsinline></video>
+      <canvas id="dec-canvas" class="hidden" width="1920" height="1080"></canvas>
+    </div>
+
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 2 — Decryption Key</div>
+      <div class="flex gap-3">
+        <input type="password" class="input-field" id="dec-password" placeholder="Enter original passphrase...">
+        <button class="btn-primary flex-none" onclick="togglePasswordVisibility('dec-password', this)" style="padding:0.75rem 1rem;">👁</button>
+      </div>
+    </div>
+
+    <div class="glass-panel p-6 md:p-8 mb-6">
+      <div class="section-head">Step 3 — Extract</div>
+      <button class="btn-primary" id="btn-decode" onclick="startDecoding()" disabled>Decode Payload</button>
+      <div class="mt-5">
+        <div class="progress-bar-wrap mb-2"><div class="progress-bar" id="dec-progress"></div></div>
+        <div class="status-line mono" id="dec-status">Ready.</div>
+      </div>
+
+      <div class="mt-6 hidden fade-in" id="dec-download-area">
+        <a id="dec-download-link" class="btn-primary inline-block text-center no-underline">Download File</a>
+        <div class="status-line mt-2 success mono" id="dec-done-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TECHNICAL LEGEND -->
+  <div class="glass-panel p-6 mt-8">
+    <div class="text-sm font-semibold text-slate-300 mb-4 border-b border-gray-700 pb-2">Architecture Readout</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mono text-xs text-slate-400 leading-relaxed">
+      <div><span class="text-blue-400 font-medium">CIPHER</span><br>AES-256-GCM<br>12B IV · 16B Salt<br>PBKDF2 100k iters</div>
+      <div><span class="text-blue-400 font-medium">COMPRESSION</span><br>fflate zipSync<br>DEFLATE algorithm<br>Zero server contact</div>
+      <div><span class="text-blue-400 font-medium">VIDEO MATRIX</span><br>1080p · 4x4 blocks<br>8-color YCbCr decode<br>YouTube-proof CBR</div>
+      <div><span class="text-blue-400 font-medium">HEADER</span><br>[4B len] [16B salt]<br>[12B IV] [4B fn_len]<br>[filename] [payload]</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!--                     JAVASCRIPT ENGINE                      -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ─── State ───────────────────────────────────────────────────
+let encodeFile      = null;
+let decodeVideoFile = null;
+let encodingAborted = false;
+
+// ─── Tab switching ────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('panel-encode').classList.toggle('hidden', tab !== 'encode');
+  document.getElementById('panel-decode').classList.toggle('hidden', tab !== 'decode');
+  document.getElementById('tab-encode').classList.toggle('active', tab === 'encode');
+  document.getElementById('tab-decode').classList.toggle('active', tab === 'decode');
+}
+
+// ─── Password visibility toggle ───────────────────────────────
+function togglePasswordVisibility(id, btn) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '👁' : '🙈';
+}
+
+// ─── File selection ───────────────────────────────────────────
+function onFileSelect(evt) {
+  encodeFile = evt.target.files[0];
+  if (!encodeFile) return;
+  document.getElementById('file-label').textContent = `${encodeFile.name}  (${formatBytes(encodeFile.size)})`;
+  document.getElementById('file-label').style.color = 'var(--phosphor)';
+  checkEncodeReady();
+}
+
+function onVideoSelect(evt) {
+  decodeVideoFile = evt.target.files[0];
+  if (!decodeVideoFile) return;
+  document.getElementById('video-label').textContent = `${decodeVideoFile.name}  (${formatBytes(decodeVideoFile.size)})`;
+  document.getElementById('video-label').style.color = 'var(--phosphor)';
+  document.getElementById('btn-decode').disabled = false;
+}
+
+function checkEncodeReady() {
+  const pw = document.getElementById('enc-password').value;
+  document.getElementById('btn-encode').disabled = !(encodeFile && pw.length >= 1);
+  // Password strength meter
+  const strength = pw.length === 0 ? '' :
+    pw.length < 8  ? '<span style="color:var(--red-alert)">WEAK — use 12+ chars</span>' :
+    pw.length < 16 ? '<span style="color:var(--amber)">MODERATE</span>' :
+                     '<span style="color:var(--phosphor)">STRONG</span>';
+  document.getElementById('enc-strength').innerHTML = strength;
+}
+
+document.getElementById('enc-password').addEventListener('input', checkEncodeReady);
+
+// ─── Drag & drop ──────────────────────────────────────────────
+['drop-zone','dec-drop-zone'].forEach(id => {
+  const zone = document.getElementById(id);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (id === 'drop-zone') {
+      encodeFile = f;
+      document.getElementById('file-label').textContent = `${f.name}  (${formatBytes(f.size)})`;
+      document.getElementById('file-label').style.color = 'var(--phosphor)';
+      checkEncodeReady();
+    } else {
+      decodeVideoFile = f;
+      document.getElementById('video-label').textContent = `${f.name}  (${formatBytes(f.size)})`;
+      document.getElementById('video-label').style.color = 'var(--phosphor)';
+      document.getElementById('btn-decode').disabled = false;
+    }
+  });
+});
+
+// ─── Utilities ────────────────────────────────────────────────
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1048576).toFixed(2)} MB`;
+}
+
+function setStatus(id, msg, cls='') {
+  const el = document.getElementById(id);
+  el.innerHTML = msg;
+  el.className = 'status-line mt-1' + (cls ? ' '+cls : '');
+}
+
+function setProgress(id, pct) {
+  document.getElementById(id).style.width = pct + '%';
+}
+
+// ─────────────────────────────────────────────────────────────
+//   CRYPTOGRAPHIC PIPELINE  (all via window.crypto.subtle)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * deriveKey()
+ * ───────────
+ * Converts a plaintext password string into an AES-GCM CryptoKey object
+ * using PBKDF2 (Password-Based Key Derivation Function 2).
+ *
+ * Why PBKDF2?  A raw password has low entropy. PBKDF2 forces an attacker
+ * to do 100,000 SHA-256 hash iterations per guess, making brute-force
+ * extremely expensive even on modern GPUs.
+ *
+ * @param {string}     password   - The user's passphrase (plaintext)
+ * @param {Uint8Array} salt       - 16 random bytes, unique per encryption
+ * @returns {Promise<CryptoKey>}  - Ready-to-use AES-GCM-256 key
+ */
+async function deriveKey(password, salt) {
+  // Step 1: Import the raw password string as PBKDF2 "key material".
+  // TextEncoder converts the UTF-8 string into bytes.
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    { name: 'PBKDF2' },
+    false,               // not extractable — keeps the raw bytes in memory only
+    ['deriveKey']
+  );
+
+  // Step 2: Run PBKDF2 to derive the actual AES key.
+  // - hash: SHA-256 (32-byte internal state)
+  // - salt: random bytes — ensures same password → different key each time
+  // - iterations: 100,000 — deliberate slowdown against brute force
+  // - The output is a 256-bit (32-byte) AES-GCM key
+  return crypto.subtle.deriveKey(
+    {
+      name:       'PBKDF2',
+      salt:       salt,
+      iterations: 100_000,
+      hash:       'SHA-256'
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },  // target key algorithm & size
+    false,                               // not extractable from JS
+    ['encrypt', 'decrypt']               // permitted usages
+  );
+}
+
+/**
+ * encryptPayload()
+ * ────────────────
+ * Compresses the raw file with fflate, then encrypts the zip buffer
+ * with AES-GCM-256 and packages everything into one binary header.
+ *
+ * AES-GCM provides:
+ *   • Confidentiality (cipher stream)
+ *   • Authenticity   (built-in 128-bit GHASH tag — tamper detection)
+ *
+ * @param {ArrayBuffer} fileBuffer - Raw bytes of the uploaded file
+ * @param {string}      filename   - Original filename (stored in header)
+ * @param {string}      password   - User passphrase
+ * @param {number}      BYTES_PER_FRAME - Number of bytes each frame can store
+ * @param {number}      ENCODE_FPS - Video frame rate
+ * @returns {Promise<Object>}      - { sortedChunks, totalBytes }
+ */
+function sortPayloadChunks(chunks) {
+  const N = chunks.length;
+  if (N <= 2) {
+    const perm = Array.from({length: N}, (_, i) => i);
+    return { sortedChunks: chunks, permutation: perm };
+  }
+
+  const sorted = [chunks[0]];
+  const perm = [0];
+  const unvisited = new Set();
+  for (let i = 1; i < N; i++) unvisited.add(i);
+
+  // Downsample byte comparison for performance in the browser main thread
+  const STEP = 64;
+  function getDistance(c1, c2) {
+    let dist = 0;
+    const len = c1.length;
+    for (let i = 0; i < len; i += STEP) {
+      dist += Math.abs(c1[i] - c2[i]);
+    }
+    return dist;
+  }
+
+  let current = chunks[0];
+  while (unvisited.size > 0) {
+    let bestIdx = -1;
+    let minDist = Infinity;
+    for (const idx of unvisited) {
+      const dist = getDistance(current, chunks[idx]);
+      if (dist < minDist) {
+        minDist = dist;
+        bestIdx = idx;
+      }
+    }
+    unvisited.delete(bestIdx);
+    sorted.push(chunks[bestIdx]);
+    perm.push(bestIdx);
+    current = chunks[bestIdx];
+  }
+
+  return { sortedChunks: sorted, permutation: perm };
+}
+
+async function encryptPayload(fileBuffer, filename, password) {
+  setStatus('enc-status', '⚙ Compressing with DEFLATE (fflate)…');
+  await tick();
+
+  // ── 1. ZIP COMPRESSION ──────────────────────────────────────
+  const rawBytes = new Uint8Array(fileBuffer);
+  const zipBuffer = fflate.zipSync({ [filename]: rawBytes });
+
+  setStatus('enc-status', '⚙ Generating cryptographic salt & IV…');
+  await tick();
+
+  // ── 2. RANDOM SALT & IV ──────────────────────────────────────
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+
+  // ── 3. KEY DERIVATION ────────────────────────────────────────
+  setStatus('enc-status', '⚙ Running PBKDF2 (100 000 iterations)…');
+  await tick();
+  const key = await deriveKey(password, salt);
+
+  // ── 4. AES-GCM ENCRYPTION ───────────────────────────────────
+  setStatus('enc-status', '⚙ AES-GCM encrypting payload…');
+  await tick();
+
+  const encryptedBuf = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv },
+    key,
+    zipBuffer
+  );
+  const encryptedBytes = new Uint8Array(encryptedBuf);
+
+  // ── 5. BUILD BINARY HEADER & CHUNKS ──────────────────────────
+  const fnBytes   = new TextEncoder().encode(filename);
+  const headerLen = 4 + 16 + 12 + 4 + fnBytes.length; // 4B total_len, 16B salt, 12B IV, 4B fn_len, fnBytes
+  const totalLen  = headerLen + encryptedBytes.length;
+
+  const header = new Uint8Array(headerLen);
+  const view   = new DataView(header.buffer);
+
+  view.setUint32(0, totalLen, true);
+  header.set(salt,    4);
+  header.set(iv,     20);
+  view.setUint32(32, fnBytes.length, true);
+  header.set(fnBytes, 36);
+
+  const finalPayload = new Uint8Array(totalLen);
+  finalPayload.set(header, 0);
+  finalPayload.set(encryptedBytes, headerLen);
+
+  const totalFrames = Math.ceil(totalLen / BYTES_PER_FRAME);
+  const chunks = [];
+  for (let i = 0; i < totalFrames; i++) {
+    const chunk = new Uint8Array(BYTES_PER_FRAME);
+    const start = i * BYTES_PER_FRAME;
+    chunk.set(finalPayload.subarray(start, start + BYTES_PER_FRAME));
+    chunks.push(chunk);
+  }
+
+  return { chunks, totalBytes: totalLen };
+}
+
+/**
+ * decryptPayload()
+ * ────────────────
+ * Parses the binary header, re-derives the key from the stored salt,
+ * and decrypts the AES-GCM ciphertext.
+ *
+ * @param {Uint8Array} payload  - Complete header + encrypted bytes
+ * @param {string}     password - User passphrase
+ * @returns {Promise<{data: Uint8Array, filename: string}>}
+ */
+async function decryptPayload(payload, password) {
+  const view = new DataView(payload.buffer, payload.byteOffset);
+
+  // ── 1. PARSE HEADER ─────────────────────────────────────────
+  const salt     = payload.slice(4,  20);       // 16 bytes
+  const iv       = payload.slice(20, 32);       // 12 bytes
+  const fnLen    = view.getUint32(32, true);    // 4 bytes
+  const fnBytes  = payload.slice(36, 36 + fnLen);
+  const filename = new TextDecoder().decode(fnBytes);
+  const ciphertext = payload.slice(36 + fnLen); // everything after header
+
+  // ── 2. KEY RE-DERIVATION ─────────────────────────────────────
+  setStatus('dec-status', '⚙ Running PBKDF2 key derivation…');
+  await tick();
+  const key = await deriveKey(password, salt);
+
+  // ── 3. AES-GCM DECRYPTION ────────────────────────────────────
+  setStatus('dec-status', '⚙ AES-GCM decrypting…');
+  await tick();
+  const decryptedBuf = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: iv },
+    key,
+    ciphertext
+  );
+
+  return { data: new Uint8Array(decryptedBuf), filename };
+}
+
+// ─────────────────────────────────────────────────────────────
+//   VIDEO MATRIX ENGINE  (SnowCrash frame renderer)
+// ─────────────────────────────────────────────────────────────
+
+const CANVAS_W    = 1920;
+const CANVAS_H    = 1080;
+// 4×4 px blocks — H.264/VP9 DCT-unit aligned.
+// By reading only the "dead center" (inner 2×2 pixels) during decode,
+// we survive 4:2:0 chroma subsampling and block-edge quantization blur.
+const BLOCK_SIZE  = 16;
+const COLS        = 120;  // 1920 / 16 = 120 blocks/row
+const ROWS        = 67;   // 1072 / 16 = 67 blocks/col (centered with 4px padding top/bottom)
+const ENCODE_FPS  = 30;   // standard YouTube framerate
+const FRAME_REPEATS = 15; // repeat each data frame for 15 frames (0.5s) to assist camera scanning
+
+// BINARY encoding: 1 bit per block → 2 distinct colors (Black/White).
+// Maximum contrast (0 vs 255) and no chroma channels makes it immune
+// to chroma subsampling and highly compressible.
+// COLS×ROWS×1 = 120×67×1 = 8,040 bits = 1,005 bytes/frame ✓
+const BITS_PER_BLOCK   = 1;
+const BLOCKS_PER_FRAME = COLS * ROWS;                       
+const BITS_PER_FRAME   = BLOCKS_PER_FRAME * BITS_PER_BLOCK; 
+const BYTES_PER_FRAME  = BITS_PER_FRAME / 8;                
+
+// Binary palette — maximum pairwise separation (0 vs 255).
+const PALETTE = [
+  [  0,   0,   0],  // 0 black
+  [255, 255, 255],  // 1 white
+];
+
+/** Convert linear RGB [0–255] to BT.601 YCbCr [0–255] */
+function rgbToYCbCr(r, g, b) {
+  return [
+     0.299*r + 0.587*g + 0.114*b,                           // Y
+    128 - 0.168736*r - 0.331264*g + 0.500*b,               // Cb
+    128 + 0.500*r    - 0.418688*g - 0.081312*b,            // Cr
+  ];
+}
+
+/** Pre-computed palette in YCbCr for fast nearest-centroid matching */
+const PALETTE_YUV = PALETTE.map(([r, g, b]) => rgbToYCbCr(r, g, b));
+
+/** Pre-computed 32-bit palette for massive canvas writing speedup */
+const PALETTE32 = new Uint32Array(PALETTE.length);
+for (let i = 0; i < PALETTE.length; i++) {
+  const [r, g, b] = PALETTE[i];
+  const buf = new ArrayBuffer(4);
+  const u8 = new Uint8Array(buf);
+  u8[0] = r; u8[1] = g; u8[2] = b; u8[3] = 255;
+  PALETTE32[i] = new Uint32Array(buf)[0];
+}
+
+/**
+ * Determines if a block position lies within one of the four 7x7 corner finder patterns.
+ * If so, returns the color index (0 for Black, 1 for White).
+ * If not, returns -1.
+ */
+function isCornerMarker(col, row) {
+  const SIZE = 7;
+  let isCorner = false;
+  let c = 0, r = 0;
+
+  if (col < SIZE && row < SIZE) {
+    isCorner = true; c = col; r = row;
+  } else if (col >= COLS - SIZE && row < SIZE) {
+    isCorner = true; c = col - (COLS - SIZE); r = row;
+  } else if (col < SIZE && row >= ROWS - SIZE) {
+    isCorner = true; c = col; r = row - (ROWS - SIZE);
+  } else if (col >= COLS - SIZE && row >= ROWS - SIZE) {
+    isCorner = true; c = col - (COLS - SIZE); r = row - (ROWS - SIZE);
+  }
+
+  if (isCorner) {
+    if (c === 0 || c === 6 || r === 0 || r === 6) return 0; // Black
+    if (c === 1 || c === 5 || r === 1 || r === 5) return 1; // White
+    return 0; // Black
+  }
+  return -1;
+}
+
+/**
+ * Determines if a block position is reserved for the 16-bit frame index metadata.
+ * Returns the bit index (0..15) if true, otherwise -1.
+ */
+function isMetadataBlock(col, row) {
+  if (row === 0 && col >= 7 && col <= 22) {
+    return col - 7;
+  }
+  return -1;
+}
+
+/**
+ * renderFrameToCanvas()
+ * ─────────────────────
+ * Paints one 1920×1080 SnowCrash frame onto the canvas.
+ */
+function renderFrameToCanvas(ctx, bytes, byteOffset, frameIndex) {
+  const imgData = ctx.createImageData(CANVAS_W, CANVAS_H);
+  const buf32   = new Uint32Array(imgData.data.buffer);
+
+  // Fill canvas with solid black (centers the 1072px active area within 1080px)
+  buf32.fill(0xff000000);
+
+  let absBit = byteOffset * 8;
+
+  for (let row = 0; row < ROWS; row++) {
+    const py = row * BLOCK_SIZE + 4; // Add 4px top/bottom padding to center vertically
+    for (let col = 0; col < COLS; col++) {
+      const px = col * BLOCK_SIZE;
+      let idx = 0;
+
+      const cornerIdx = isCornerMarker(col, row);
+      if (cornerIdx !== -1) {
+        idx = cornerIdx;
+      } else {
+        const metaBitIdx = isMetadataBlock(col, row);
+        if (metaBitIdx !== -1) {
+          idx = (frameIndex >> metaBitIdx) & 1;
+        } else {
+          if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
+            idx = readBit(bytes, absBit);
+            absBit += 1;
+          } else {
+            idx = 0;
+          }
+        }
+      }
+
+      const color = PALETTE32[idx];
+
+      // Write 16x16 block
+      for (let br = 0; br < 16; br++) {
+        const base = (py + br) * CANVAS_W + px;
+        for (let bc = 0; bc < 16; bc++) {
+          buf32[base + bc] = color;
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
+/** Read a single bit at absolute bit-position `pos` from `bytes` */
+function readBit(bytes, pos) {
+  const byteIdx = pos >> 3;                 // Math.floor(pos/8)
+  const shift   = 7 - (pos & 7);           // MSB-first
+  return byteIdx < bytes.length ? (bytes[byteIdx] >> shift) & 1 : 0;
+}
+
+function readBitsFromCanvas(ctx, outBytes, byteOffset) {
+  const imgData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+  const buf     = imgData.data;
+
+  let absBit = byteOffset * 8;
+  let decodedFrameIndex = 0;
+  let cornerMatches = 0;
+  const totalCornerBlocks = 196;
+
+  for (let row = 0; row < ROWS; row++) {
+    const py = row * BLOCK_SIZE + 4;
+    for (let col = 0; col < COLS; col++) {
+      const px = col * BLOCK_SIZE;
+
+      // Sample a 4x4 region in the center of the 16x16 block to be immune to edge blur/aliasing
+      let sumR = 0, sumG = 0, sumB = 0;
+      for (let sy = 6; sy < 10; sy++) {
+        for (let sx = 6; sx < 10; sx++) {
+          const idx = ((py + sy) * CANVAS_W + (px + sx)) * 4;
+          sumR += buf[idx];
+          sumG += buf[idx + 1];
+          sumB += buf[idx + 2];
+        }
+      }
+
+      const avgR = sumR / 16;
+      const avgG = sumG / 16;
+      const avgB = sumB / 16;
+
+      const y = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+      const bitVal = y > 127 ? 1 : 0;
+
+      const cornerIdx = isCornerMarker(col, row);
+      if (cornerIdx !== -1) {
+        if (bitVal === cornerIdx) {
+          cornerMatches++;
+        }
+      } else {
+        const metaBitIdx = isMetadataBlock(col, row);
+        if (metaBitIdx !== -1) {
+          decodedFrameIndex |= (bitVal << metaBitIdx);
+        } else {
+          if (absBit < byteOffset * 8 + BYTES_PER_FRAME * 8) {
+            setBit(outBytes, absBit, bitVal);
+            absBit += 1;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    frameIndex: decodedFrameIndex,
+    matchPct: cornerMatches / totalCornerBlocks
+  };
+}
+
+/** Set a single bit at absolute bit-position `bitPos` in `array` to `val` */
+function setBit(array, bitPos, val) {
+  const byteIdx = bitPos >> 3;
+  const shift   = 7 - (bitPos & 7);
+  if (byteIdx >= array.length) return;
+  if (val) {
+    array[byteIdx] |=  (1 << shift);
+  } else {
+    array[byteIdx] &= ~(1 << shift);
+  }
+}
+
+function tick() {
+  return new Promise(r => setTimeout(r, 0));
+}
+
+// ─────────────────────────────────────────────────────────────
+//   ENCODE FLOW
+// ─────────────────────────────────────────────────────────────
+
+async function startEncoding() {
+  if (!encodeFile) return;
+  const password = document.getElementById('enc-password').value;
+  if (!password) return;
+
+  // WebCodecs support check
+  if (typeof VideoEncoder === 'undefined') {
+    setStatus('enc-status',
+      '✕ WebCodecs VideoEncoder not supported. Use Chrome 94+, Edge 94+, or Safari 16.4+.', 'alert');
+    return;
+  }
+
+  encodingAborted = false;
+
+  document.getElementById('btn-encode').disabled = true;
+  document.getElementById('btn-cancel-enc').classList.remove('hidden');
+  document.getElementById('enc-download-area').classList.add('hidden');
+  document.getElementById('canvas-container').classList.remove('hidden');
+  document.getElementById('rec-indicator').classList.remove('hidden');
+  setProgress('enc-progress', 0);
+
+  const canvas = document.getElementById('snowcrash-canvas');
+  canvas.width = CANVAS_W;
+  canvas.height = CANVAS_H;
+  const ctx    = canvas.getContext('2d');
+
+  try {
+    // ── READ FILE ──────────────────────────────────────────────
+    setStatus('enc-status', '⚙ Reading file…');
+    const fileBuffer = await encodeFile.arrayBuffer();
+
+    // ── ENCRYPT ───────────────────────────────────────────────
+    const { chunks, totalBytes } = await encryptPayload(fileBuffer, encodeFile.name, password);
+    if (encodingAborted) return cleanup('enc');
+
+    const totalChunks = chunks.length;
+    const totalFrames = totalChunks * FRAME_REPEATS;
+
+    setStatus('enc-status', `⚙ Encoding ${totalChunks} chunks into ${totalFrames} frames (${formatBytes(totalBytes)} payload)…`);
+
+    // ── MP4 MUXER SETUP ───────────────────────────────────────
+    const target = new Mp4Muxer.ArrayBufferTarget();
+    const muxer  = new Mp4Muxer.Muxer({
+      target,
+      video: { codec: 'avc', width: CANVAS_W, height: CANVAS_H, frameRate: ENCODE_FPS },
+      fastStart: 'in-memory'
+    });
+
+    // ── VIDEO ENCODER SETUP ───────────────────────────────────
+    let encodeError = null;
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error:  (e) => { encodeError = e; }
+    });
+    encoder.configure({
+      codec:       'avc1.640034',    // H.264 High Profile Level 5.2
+      width:       CANVAS_W,
+      height:      CANVAS_H,
+      bitrate:     1_500_000,        // 1.5 Mbps CBR limit (extremely efficient)
+      bitrateMode: 'constant',
+      framerate:   ENCODE_FPS,
+      latencyMode: 'realtime'
+    });
+
+    const US_PER_FRAME = Math.round(1_000_000 / ENCODE_FPS);  // microseconds
+
+    // ── RENDER & ENCODE FRAMES ────────────────────────────────
+    let currentFrame = 0;
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      if (encodingAborted) break;
+      if (encodeError) throw encodeError;
+
+      // Render the frame once with the frameIndex metadata
+      renderFrameToCanvas(ctx, chunks[chunkIdx], 0, chunkIdx);
+
+      // Repeat this frame FRAME_REPEATS times
+      for (let r = 0; r < FRAME_REPEATS; r++) {
+        if (encodingAborted) break;
+        if (encodeError) throw encodeError;
+
+        const vf = new VideoFrame(canvas, {
+          timestamp: currentFrame * US_PER_FRAME,
+          duration:  US_PER_FRAME
+        });
+        
+        // Keyframes only on the very first frame.
+        // Identical subsequent frames will compress to near zero.
+        encoder.encode(vf, { keyFrame: currentFrame === 0 });
+        vf.close();
+
+        currentFrame++;
+      }
+
+      const pct = ((chunkIdx + 1) / totalChunks * 100).toFixed(1);
+      setProgress('enc-progress', pct);
+      if (chunkIdx % 2 === 0 || chunkIdx === totalChunks - 1) {
+        setStatus('enc-status', `⚙ Chunk ${chunkIdx+1} / ${totalChunks} (${pct}%)…`);
+        await tick();
+      }
+    }
+
+    if (encodingAborted) return cleanup('enc');
+
+    // ── FINALISE ──────────────────────────────────────────────
+    setStatus('enc-status', '⚙ Flushing encoder & writing MP4…');
+    await encoder.flush();
+    muxer.finalize();
+
+    const { buffer } = target;
+    const blob = new Blob([buffer], { type: 'video/mp4' });
+    const url  = URL.createObjectURL(blob);
+    const link = document.getElementById('enc-download-link');
+    link.href        = url;
+    link.download    = `snowcrash_${encodeFile.name}.mp4`;
+    link.textContent = '⬇ Download .mp4 Video';
+    document.getElementById('enc-download-area').classList.remove('hidden');
+    setProgress('enc-progress', 100);
+    setStatus('enc-status', `✓ Done — ${totalChunks} chunks (${totalFrames} frames) encoded.`, 'success');
+    setStatus('enc-done-msg',
+      `${formatBytes(blob.size)} MP4 · ${totalChunks} chunks · ${formatBytes(totalBytes)} encrypted payload`,
+      'success');
+
+  } catch (err) {
+    setStatus('enc-status', `✕ Error: ${err.message}`, 'alert');
+    console.error(err);
+  } finally {
+    document.getElementById('btn-encode').disabled = false;
+    document.getElementById('btn-cancel-enc').classList.add('hidden');
+    document.getElementById('rec-indicator').classList.add('hidden');
+  }
+}
+
+function cancelEncoding() {
+  encodingAborted = true;
+  setStatus('enc-status', '✕ Encoding cancelled.', 'warn');
+  setProgress('enc-progress', 0);
+  document.getElementById('btn-encode').disabled = false;
+  document.getElementById('btn-cancel-enc').classList.add('hidden');
+  document.getElementById('rec-indicator').classList.add('hidden');
+  document.getElementById('canvas-container').classList.add('hidden');
+}
+
+function cleanup(which) {
+  if (which === 'enc') {
+    document.getElementById('btn-encode').disabled = false;
+    document.getElementById('btn-cancel-enc').classList.add('hidden');
+    document.getElementById('rec-indicator').classList.add('hidden');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//   DECODE FLOW
+// ─────────────────────────────────────────────────────────────
+
+async function startDecoding() {
+  if (!decodeVideoFile) return;
+  const password = document.getElementById('dec-password').value.trim();
+  if (!password) {
+    setStatus('dec-status', '✕ Please enter the decryption password.', 'alert');
+    return;
+  }
+
+  document.getElementById('btn-decode').disabled = true;
+  document.getElementById('dec-download-area').classList.add('hidden');
+  setProgress('dec-progress', 0);
+  setStatus('dec-status', '⚙ Loading video…');
+
+  const video  = document.getElementById('dec-video');
+  const canvas = document.getElementById('dec-canvas');
+  canvas.width = CANVAS_W;
+  canvas.height = CANVAS_H;
+  const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+  try {
+    // ── LOAD VIDEO INTO ELEMENT ───────────────────────────────
+    const videoURL = URL.createObjectURL(decodeVideoFile);
+    await loadVideo(video, videoURL);
+
+    const duration   = video.duration;
+    const CHUNK_DUR  = FRAME_REPEATS / ENCODE_FPS; // 0.5 seconds per chunk
+    const estChunks  = Math.ceil(duration / CHUNK_DUR);
+
+    setStatus('dec-status', `⚙ Detected ~${estChunks} chunks (${duration.toFixed(2)}s video)`);
+
+    // ── PASS 1: Read chunk 0 to extract header ───────────────────
+    const headerScratch = new Uint8Array(BYTES_PER_FRAME);
+    await seekAndDraw(video, canvas, ctx, CHUNK_DUR * 0.5); // Seek to the center of chunk 0
+    const res0 = readBitsFromCanvas(ctx, headerScratch, 0);
+
+    const headerView = new DataView(headerScratch.buffer);
+    const totalPayloadLen = headerView.getUint32(0, true);
+
+    if (totalPayloadLen === 0 || totalPayloadLen > 500_000_000) {
+      throw new Error('Invalid header — is this a SnowCrash video?');
+    }
+
+    const totalChunks = Math.ceil(totalPayloadLen / BYTES_PER_FRAME);
+    setStatus('dec-status', `⚙ Payload: ${formatBytes(totalPayloadLen)} across ${totalChunks} chunks. Extracting…`);
+
+    // ── PASS 2: Read all chunks ───────────────────────────────
+    const rawPayload = new Uint8Array(totalPayloadLen);
+
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const timePos = (chunkIdx + 0.5) * CHUNK_DUR;
+      await seekAndDraw(video, canvas, ctx, timePos);
+
+      // We read the bits from the canvas. The function returns { frameIndex, matchPct }.
+      const res = readBitsFromCanvas(ctx, rawPayload, chunkIdx * BYTES_PER_FRAME);
+
+      // If the index returned is valid, we could use it to write, but to be completely safe during file decoding,
+      // we just trust the seek index chunkIdx while logging validation details.
+      console.log(`Chunk ${chunkIdx}: Decoded frameIndex = ${res.frameIndex}, expected = ${chunkIdx}, corners match = ${(res.matchPct*100).toFixed(1)}%`);
+
+      const pct = ((chunkIdx + 1) / totalChunks * 100).toFixed(1);
+      setProgress('dec-progress', pct);
+      if (chunkIdx % 2 === 0 || chunkIdx === totalChunks - 1) {
+        setStatus('dec-status', `⚙ Extracting chunk ${chunkIdx+1} / ${totalChunks} (${pct}%)…`);
+        await tick();
+      }
+    }
+
+    URL.revokeObjectURL(videoURL);
+
+    // ── DECRYPT ───────────────────────────────────────────────
+    let result;
+    try {
+      result = await decryptPayload(rawPayload, password);
+    } catch (err) {
+      setStatus('dec-status',
+        '🔑 DECRYPTION FAILED — incorrect password or corrupted video. Check your passphrase and try again.',
+        'alert');
+      document.getElementById('btn-decode').disabled = false;
+      console.error(err);
+      return;
+    }
+
+    // ── DECOMPRESS & OFFER DOWNLOAD ───────────────────────────
+    setStatus('dec-status', '⚙ Decompressing payload (fflate)…');
+    await tick();
+
+    let originalFilename, originalData;
+    try {
+      const unzipped = fflate.unzipSync(result.data);
+      originalFilename = Object.keys(unzipped)[0];
+      originalData = unzipped[originalFilename];
+    } catch (e) {
+      throw new Error('Decryption succeeded but decompression failed (corrupted ZIP).');
+    }
+
+    const fileBlob = new Blob([originalData], { type: 'application/octet-stream' });
+    const fileURL  = URL.createObjectURL(fileBlob);
+    const link     = document.getElementById('dec-download-link');
+    
+    link.href     = fileURL;
+    link.download = originalFilename;
+    link.textContent = `⬇ Download ${originalFilename}`;
+    
+    document.getElementById('dec-download-area').classList.remove('hidden');
+    setProgress('dec-progress', 100);
+    setStatus('dec-status', `✓ Success! Payload decrypted & extracted.`, 'success');
+    setStatus('dec-done-msg',
+      `Restored file: ${originalFilename} (${formatBytes(originalData.length)})`, 'success');
+    document.getElementById('btn-decode').disabled = false;
+
+  } catch (err) {
+    setStatus('dec-status',
+      '🔑 DECRYPTION FAILED — incorrect password or corrupted video. Check your passphrase and try again.',
+      'alert');
+    document.getElementById('btn-decode').disabled = false;
+    console.error(err);
+  }
+}
+
+/**
+ * seekAndDraw()
+ * ─────────────
+ * Seeks the video to `time` and draws the frame onto the canvas.
+ *
+ * FIX: After 'seeked' fires, wait one rAF tick before drawing.
+ * Some browsers fire 'seeked' before the video element's bitmap is
+ * actually updated, causing drawImage to copy the previous frame.
+ * The rAF delay lets the compositor finish updating the video texture.
+ */
+function seekAndDraw(video, canvas, ctx, time) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Seek timeout at ${time}s`)), 10000);
+    const onSeeked = () => {
+      clearTimeout(timeout);
+      video.removeEventListener('seeked', onSeeked);
+      // Wait for next paint cycle so video bitmap is fully updated
+      requestAnimationFrame(() => {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        resolve();
+      });
+    };
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = time;
+  });
+}
+
+/**
+ * loadVideo()
+ * ─────────────
+ * Loads a video URL into the HTMLVideoElement and waits for metadata.
+ */
+function loadVideo(video, url) {
+  return new Promise((resolve, reject) => {
+    video.onloadedmetadata = resolve;
+    video.onerror = () => reject(new Error('Failed to load video'));
+    video.src = url;
+    video.load();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//   WEBCAM DECODER ENGINE
+// ─────────────────────────────────────────────────────────────
+
+let webcamStream = null;
+let webcamActive = false;
+let webcamTimer  = null;
+
+let webcamPayloadBuffer = null;
+let receivedChunks = new Set();
+let totalWebcamChunks = 0;
+let pendingWebcamChunks = new Map();
+
+const camScratchCanvas = document.createElement('canvas');
+camScratchCanvas.width = 1280;
+camScratchCanvas.height = 720;
+const camScratchCtx = camScratchCanvas.getContext('2d', { willReadFrequently: true });
+
+// Audio Feedback Engine
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playBeep(freq, duration) {
+  try {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.04, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
+    
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) {
+    // Fail silently if audio blocked
+  }
+}
+
+function playSuccessTone() {
+  playBeep(523.25, 0.08); // C5
+  setTimeout(() => playBeep(659.25, 0.08), 80); // E5
+  setTimeout(() => playBeep(783.99, 0.08), 160); // G5
+  setTimeout(() => playBeep(1046.50, 0.25), 240); // C6
+}
+
+function switchDecodeMode(mode) {
+  document.getElementById('btn-dec-mode-file').classList.toggle('active', mode === 'file');
+  document.getElementById('btn-dec-mode-camera').classList.toggle('active', mode === 'camera');
+  document.getElementById('dec-file-area').classList.toggle('hidden', mode !== 'file');
+  document.getElementById('dec-camera-area').classList.toggle('hidden', mode !== 'camera');
+  
+  if (mode === 'file') {
+    stopWebcam();
+  }
+}
+
+async function startWebcam() {
+  const video = document.getElementById('webcam-video');
+  try {
+    setStatus('cam-status', '⚙ Initializing camera…');
+    const constraints = {
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+    webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = webcamStream;
+    video.play();
+    webcamActive = true;
+    document.getElementById('btn-toggle-cam').textContent = 'Stop Camera';
+    document.getElementById('btn-toggle-cam').className = 'btn-primary btn-danger';
+    setStatus('cam-status', '📡 Camera active. Align video frame with guides.');
+    
+    // Reset scanner states
+    webcamPayloadBuffer = null;
+    receivedChunks.clear();
+    pendingWebcamChunks.clear();
+    totalWebcamChunks = 0;
+    setProgress('dec-progress', 0);
+    
+    // Start processing loop
+    webcamTimer = requestAnimationFrame(processWebcamFrame);
+  } catch (err) {
+    console.error(err);
+    setStatus('cam-status', `✕ Camera error: ${err.message}`, 'alert');
+  }
+}
+
+function stopWebcam() {
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(track => track.stop());
+    webcamStream = null;
+  }
+  const video = document.getElementById('webcam-video');
+  if (video) video.srcObject = null;
+  webcamActive = false;
+  const btn = document.getElementById('btn-toggle-cam');
+  if (btn) {
+    btn.textContent = 'Start Camera';
+    btn.className = 'btn-primary';
+  }
+  setStatus('cam-status', 'Camera stopped.');
+  if (webcamTimer) {
+    cancelAnimationFrame(webcamTimer);
+    webcamTimer = null;
+  }
+}
+
+function toggleCamera() {
+  if (webcamActive) {
+    stopWebcam();
+  } else {
+    startWebcam();
+  }
+}
+
+async function processWebcamFrame() {
+  if (!webcamActive) return;
+
+  const video = document.getElementById('webcam-video');
+  
+  if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+    // Draw current frame to scratch canvas
+    camScratchCtx.drawImage(video, 0, 0, camScratchCanvas.width, camScratchCanvas.height);
+    
+    // Crop the guide box area (centered, 80% size)
+    const cropX = 128;
+    const cropY = 72;
+    const cropW = 1024;
+    const cropH = 576;
+    
+    // Read bits from the cropped guide region
+    const tempArray = new Uint8Array(BYTES_PER_FRAME);
+    const res = readBitsFromCroppedCanvas(camScratchCtx, tempArray, cropX, cropY, cropW, cropH);
+    
+    const camStatusEl = document.getElementById('cam-status');
+    
+    // If corners match >80%, we consider the signal locked
+    if (res.matchPct > 0.80) {
+      camStatusEl.textContent = `💚 Signal Locked (${(res.matchPct*100).toFixed(0)}%) · Current Chunk: ${res.frameIndex}`;
+      camStatusEl.className = "absolute bottom-2 left-2 bg-emerald-950/90 border border-emerald-500 px-2 py-1 rounded text-xs text-emerald-300 font-semibold mono";
+      
+      const idx = res.frameIndex;
+      
+      // Safety check on index bounds
+      if (idx >= 0 && idx < 10000) {
+        if (!webcamPayloadBuffer) {
+          // If we don't have the final buffer yet, store this chunk in pending chunks
+          if (!pendingWebcamChunks.has(idx)) {
+            pendingWebcamChunks.set(idx, tempArray);
+            console.log(`Webcam: Buffered chunk ${idx}`);
+          }
+          
+          if (idx === 0) {
+            // Read total length from chunk 0 header
+            const view = new DataView(tempArray.buffer);
+            const totalPayloadLen = view.getUint32(0, true);
+            if (totalPayloadLen > 0 && totalPayloadLen < 500_000_000) {
+              totalWebcamChunks = Math.ceil(totalPayloadLen / BYTES_PER_FRAME);
+              webcamPayloadBuffer = new Uint8Array(totalPayloadLen);
+              receivedChunks.clear();
+              
+              // Flush pending chunks into the new buffer
+              for (const [pIdx, pData] of pendingWebcamChunks) {
+                if (pIdx * BYTES_PER_FRAME < totalPayloadLen) {
+                  webcamPayloadBuffer.set(pData, pIdx * BYTES_PER_FRAME);
+                  receivedChunks.add(pIdx);
+                }
+              }
+              pendingWebcamChunks.clear();
+              playBeep(440, 0.1); // Tone indicating header captured
+              setStatus('dec-status', `📡 Signal acquired. Capturing ${totalWebcamChunks} chunks…`, 'success');
+            }
+          }
+        } else {
+          // Main buffer is active
+          if (!receivedChunks.has(idx)) {
+            const totalPayloadLen = webcamPayloadBuffer.length;
+            if (idx * BYTES_PER_FRAME < totalPayloadLen) {
+              webcamPayloadBuffer.set(tempArray, idx * BYTES_PER_FRAME);
+              receivedChunks.add(idx);
+              
+              // Play audio feedback tick
+              playBeep(880, 0.05);
+              
+              const pct = (receivedChunks.size / totalWebcamChunks * 100).toFixed(1);
+              setProgress('dec-progress', pct);
+              setStatus('dec-status', `⚙ Captured ${receivedChunks.size} / ${totalWebcamChunks} chunks (${pct}%)…`, 'success');
+              
+              if (receivedChunks.size === totalWebcamChunks) {
+                stopWebcam();
+                playSuccessTone();
+                await decryptAndSaveWebcamPayload();
+                return;
+              }
+            }
+          }
+        }
+      }
+    } else {
+      camStatusEl.textContent = `⚠️ Aligning Guides (${(res.matchPct*100).toFixed(0)}%)`;
+      camStatusEl.className = "absolute bottom-2 left-2 bg-amber-950/90 border border-amber-500 px-2 py-1 rounded text-xs text-amber-300 font-semibold mono";
+    }
+  }
+
+  // Throttle loop to ~10 frames per second to save CPU
+  setTimeout(() => {
+    if (webcamActive) {
+      webcamTimer = requestAnimationFrame(processWebcamFrame);
+    }
+  }, 100);
+}
+
+function readBitsFromCroppedCanvas(ctx, outBytes, Left, Top, Width, Height) {
+  const imgData = ctx.getImageData(Left, Top, Width, Height);
+  const buf     = imgData.data;
+
+  const block_w = Width / COLS;
+  const block_h = Height / ROWS;
+
+  let absBit = 0;
+  let decodedFrameIndex = 0;
+  let cornerMatches = 0;
+  const totalCornerBlocks = 196;
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const cx = Math.floor((col + 0.5) * block_w);
+      const cy = Math.floor((row + 0.5) * block_h);
+
+      let sumR = 0, sumG = 0, sumB = 0, count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const px = cx + dx;
+          const py = cy + dy;
+          if (px >= 0 && px < Width && py >= 0 && py < Height) {
+            const idx = (py * Width + px) * 4;
+            sumR += buf[idx];
+            sumG += buf[idx + 1];
+            sumB += buf[idx + 2];
+            count++;
+          }
+        }
+      }
+
+      const avgR = sumR / count;
+      const avgG = sumG / count;
+      const avgB = sumB / count;
+
+      const y = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+      const bitVal = y > 120 ? 1 : 0; // Slightly lower threshold than 127 to assist camera scanning
+
+      const cornerIdx = isCornerMarker(col, row);
+      if (cornerIdx !== -1) {
+        if (bitVal === cornerIdx) {
+          cornerMatches++;
+        }
+      } else {
+        const metaBitIdx = isMetadataBlock(col, row);
+        if (metaBitIdx !== -1) {
+          decodedFrameIndex |= (bitVal << metaBitIdx);
+        } else {
+          if (absBit < BYTES_PER_FRAME * 8) {
+            setBit(outBytes, absBit, bitVal);
+            absBit += 1;
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    frameIndex: decodedFrameIndex,
+    matchPct: cornerMatches / totalCornerBlocks
+  };
+}
+
+async function decryptAndSaveWebcamPayload() {
+  const password = document.getElementById('dec-password').value.trim();
+  setProgress('dec-progress', 100);
+  setStatus('dec-status', '⚙ Decrypting webcam payload…', 'success');
+  await tick();
+
+  try {
+    const result = await decryptPayload(webcamPayloadBuffer, password);
+    
+    setStatus('dec-status', '⚙ Decompressing payload (fflate)…');
+    await tick();
+
+    let originalFilename, originalData;
+    try {
+      const unzipped = fflate.unzipSync(result.data);
+      originalFilename = Object.keys(unzipped)[0];
+      originalData = unzipped[originalFilename];
+    } catch (e) {
+      throw new Error('Decryption succeeded but decompression failed (corrupted ZIP).');
+    }
+
+    const fileBlob = new Blob([originalData], { type: 'application/octet-stream' });
+    const fileURL  = URL.createObjectURL(fileBlob);
+    const link     = document.getElementById('dec-download-link');
+    
+    link.href     = fileURL;
+    link.download = originalFilename;
+    link.textContent = `⬇ Download ${originalFilename}`;
+    
+    document.getElementById('dec-download-area').classList.remove('hidden');
+    setStatus('dec-status', `✓ Success! Payload decrypted & extracted.`, 'success');
+    setStatus('dec-done-msg',
+      `Restored file: ${originalFilename} (${formatBytes(originalData.length)})`, 'success');
+    document.getElementById('btn-decode').disabled = false;
+    
+    webcamPayloadBuffer = null;
+    receivedChunks.clear();
+  } catch (err) {
+    setStatus('dec-status',
+      '🔑 DECRYPTION FAILED — incorrect password or corrupted video. Check your passphrase and try again.',
+      'alert');
+    document.getElementById('btn-decode').disabled = false;
+    console.error(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//   HEADER SNOW STATIC ANIMATION
+// ─────────────────────────────────────────────────────────────
+(function animateSnow() {
+  const c   = document.getElementById('snow-bg');
+  if (!c) return; // Safeguard against null elements
+  const ctx = c.getContext('2d');
+  let   raf;
+
+  function resize() {
+    c.width  = c.parentElement.clientWidth;
+    c.height = c.parentElement.clientHeight;
+  }
+
+  function frame() {
+    const w = c.width, h = c.height;
+    const imgData = ctx.createImageData(w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() > 0.5 ? 255 : 0;
+      d[i] = d[i+1] = d[i+2] = v;
+      d[i+3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    raf = requestAnimationFrame(frame);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  frame();
+})();
+</script>
+</body>
+</html>
