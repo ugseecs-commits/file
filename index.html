@@ -273,6 +273,7 @@
       <button class="btn full" id="listenBtn">🎙 Start listening</button>
       <canvas id="viz"></canvas>
       <div class="status"><span class="led idle" id="recLed"></span><span id="recStatus">Microphone is off.</span></div>
+      <div class="status" style="margin-top:4px;"><span class="led idle" id="meterLed"></span><span id="meterText" style="font-family:var(--mono); font-size:11.5px;">signal: — / threshold: —</span></div>
     </div>
 
     <div class="panel">
@@ -547,6 +548,8 @@ const copyBtn = document.getElementById('copyBtn');
 const clearBtn = document.getElementById('clearBtn');
 const vizCanvas = document.getElementById('viz');
 const vizCtx2d = vizCanvas.getContext('2d');
+const meterLed = document.getElementById('meterLed');
+const meterText = document.getElementById('meterText');
 
 let listening = false;
 let audioCtx = null;
@@ -559,6 +562,7 @@ let decodeState = 'IDLE'; // IDLE -> SYNCING -> PAYLOAD -> DONE
 let symbolBuffer = [];
 let lastSymbolTime = 0;
 let stableSymbol = null;
+let symbolArmed = true;
 let stableCount = 0;
 const STABLE_NEEDED = 3; // consecutive analysis frames agreeing on a symbol before we "commit" it
 const SILENCE_GAP_MS = 40; // if energy drops below threshold this long, ready for next symbol
@@ -612,6 +616,7 @@ function resetDecoder(){
   symbolBuffer = [];
   stableSymbol = null;
   stableCount = 0;
+  symbolArmed = true;
   collectedBytes = [];
   nibbleHigh = null;
   receivedChecksumNibbles = [];
@@ -683,6 +688,18 @@ function finalizeMessage(){
   resetDecoder();
 }
 
+function updateSignalMeter(maxMag, noiseFloor){
+  const ratio = maxMag / noiseFloor;
+  meterText.textContent = `signal: ${maxMag.toFixed(0)}  /  threshold: ${noiseFloor.toFixed(0)}  (${ratio.toFixed(2)}×)`;
+  if(ratio > 1){
+    meterLed.className = 'led go';
+  } else if(ratio > 0.5){
+    meterLed.className = 'led warn';
+  } else {
+    meterLed.className = 'led idle';
+  }
+}
+
 function analyzeLoopCombined(){
   if(!listening) return;
   rafId = requestAnimationFrame(analyzeLoopCombined);
@@ -699,23 +716,32 @@ function analyzeLoopCombined(){
   const maxMag = Math.max(...mags);
   const NOISE_FLOOR = bufferLength * 0.018;
 
+  // live diagnostic readout, independent of decode logic
+  updateSignalMeter(maxMag, NOISE_FLOOR);
+
   if(maxMag > NOISE_FLOOR){
     const pos = mags.indexOf(maxMag);
     const hit = combined[pos];
     const key = hit.band+':'+hit.idx;
+
     if(key === stableSymbol){
       stableCount++;
     } else {
+      // a different tone just became loudest — re-arm immediately so we
+      // never get stuck even if energy never dips below the noise floor
       stableSymbol = key;
       stableCount = 1;
+      symbolArmed = true;
     }
-    if(stableCount === STABLE_NEEDED){
+
+    if(symbolArmed && stableCount >= STABLE_NEEDED){
       handleSymbol(hit.idx);
-      stableCount = STABLE_NEEDED + 1000;
+      symbolArmed = false; // require either a different tone OR a silence gap before firing again
     }
   } else {
     stableSymbol = null;
     stableCount = 0;
+    symbolArmed = true; // silence gap re-arms detection of a repeated symbol
   }
 }
 
