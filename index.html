@@ -274,7 +274,7 @@
       <canvas id="viz"></canvas>
       <div class="status"><span class="led idle" id="recLed"></span><span id="recStatus">Microphone is off.</span></div>
       <div class="status" style="margin-top:4px;"><span class="led idle" id="meterLed"></span><span id="meterText" style="font-family:var(--mono); font-size:11.5px;">signal: — / threshold: —</span></div>
-      <div class="status" style="margin-top:4px;"><span style="color:var(--dim); font-size:11px;">tones seen:</span><span id="symbolTrace" style="font-family:var(--mono); font-size:11px; color:var(--teal);">—</span></div>
+      <div class="status" style="margin-top:4px; align-items:flex-start;"><span style="color:var(--dim); font-size:11px; flex-shrink:0; padding-top:1px;">tones seen:</span><span id="symbolTrace" style="font-family:var(--mono); font-size:11px; color:var(--teal); line-height:1.6; word-break:break-word; max-height:64px; overflow-y:auto; display:block;">—</span></div>
     </div>
 
     <div class="panel">
@@ -637,7 +637,6 @@ function updateRawSymbolReadout(){
 
 function handleSymbol(idx){
   lastSymbolsSeen.push(idx);
-  if(lastSymbolsSeen.length > 12) lastSymbolsSeen.shift();
   updateRawSymbolReadout();
 
   if(idx === CTRL_SYNC){
@@ -659,6 +658,15 @@ function handleSymbol(idx){
     return;
   }
   if(idx === CTRL_END){
+    if(decodeState !== 'PAYLOAD' || symbolBuffer.length < 4){
+      // Almost certainly a stray noise hit landing on the END frequency,
+      // not a real end-of-message -- a real payload always has at least
+      // 2 data nibbles (1 byte) plus a 2-nibble checksum = 4 nibbles minimum.
+      // Ignoring it here (instead of finalizing on empty data) is what stops
+      // background ultrasonic noise from producing this exact false error.
+      recStatus.textContent = 'Ignored a stray tone (looked like noise, not a real message). Still listening…';
+      return;
+    }
     finalizeMessage();
     return;
   }
